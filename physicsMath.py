@@ -28,6 +28,7 @@ class DOF3:
         self.drymass = 0.0
         self.mmoi = 0.0
         self.leverArm = 0.0
+        self.cpLocation = 0.0
 
         self.ori = 0.0
         self.oriRate = 0.0
@@ -47,9 +48,9 @@ class DOF3:
         self.timeStep = 0
 
 
-    def addForce(self, force, forceDir):
+    def addForce(self, force, forceDir, leverArm):
 
-        self.oriAccel += calculateRotationalAcceleration(self.leverArm, force, forceDir, self.mmoi)
+        self.oriAccel += calculateRotationalAcceleration(leverArm, force, forceDir, self.mmoi)
 
         self.accelX += calculateLateralAcceleration(self.mass, force, self.ori, forceDir)
         self.accelY += calculateVerticalAcceleration(self.mass, force, self.ori, forceDir)

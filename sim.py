@@ -1,33 +1,46 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import random
-import matplotlib.pyplot as plot
 
 from navMath import orientation, PID, FSF
 from physicsMath import DOF3, actuator
 from motors import rocketMotor, motorType
 from dataManagement import dataLogger
+from dataVisualisation import dataVisualiser
+from aero import getDrag
 
 DEG_TO_RAD = np.pi / 180 
 RAD_TO_DEG = 180 / np.pi
 
 #-------------------------------------------------------------------
 
-timeStep = 300
+timeStep = 500
 simTime = 60
 
 rocket = DOF3()
-motor = rocketMotor(motorType.d12, timeStep)
+motor = rocketMotor(timeStep)
+
+motor.maxIgnitionDelay = 0.75
+
+motor.add_motor(motorType.d12, "ascent")
+
+motor.add_motor(motorType.d12, 'secondary_ascent')
+
 ori = orientation()
 
 rocket.mmoi =  0.0404203354
-rocket.mass = 0.614
+rocket.drymass = 0.59
+rocket.mass = rocket.drymass + motor.totalMotorMass
 rocket.ori = 0
 rocket.leverArm = 0.44
+rocket.cpLocation = -0.3
 
 apogee = False
 
-PIDSpeed = 50 # HZ
+PIDSpeed = 20 # HZ
 dataLoggingSpeed = 40 #HZ
+
+setpoint = 0.0
 
 PIDDelay = 1 / PIDSpeed
 logDelay = 1 / dataLoggingSpeed
@@ -58,8 +71,19 @@ logger.addDataPoint("Y_acceleration")
 logger.addDataPoint("resultant_acceleration")
 
 logger.addDataPoint("thrust")
+logger.addDataPoint("mass")
 
 logger.fileName = "data_out.csv"
+
+
+oriPlot = dataVisualiser()
+oriPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
+
+posPlot = dataVisualiser()
+posPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
+
+accelPlot = dataVisualiser()
+accelPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
 
 time = 0.0
 counter = 0
@@ -68,17 +92,19 @@ lastPID = 0.0
 dt = 1 / timeStep
 
 ori.trueOri = rocket.ori
-ori.oriNoiseMultiplier = 0.01
+ori.oriNoiseMultiplier = 0.5
 
 TVC = actuator()
 
 TVC.maxActuatorPosition = 20
 TVC.actuatorSpeed = 50
-TVC.actuatorNoise = 0.05
+TVC.actuatorNoise = 0.1
+
+randWind = random.randint(75, 150) / 100 * random.choice([-1,1])
 
 logger.initCSV(True, True)
 
-motor.ignite(time)
+motor.ignite("ascent", time)
 
 #-------------------------------------------------------------------
 
@@ -86,10 +112,19 @@ while time < simTime:
     counter += 1
     time += dt
 
+    # windForce = (np.sin(time * 2) + randWind) * 0.5
+    if time > 0.5 and time < 1.5:
+        setpoint += 5 * dt
+        PID_ori.setSetpoint(setpoint)
     motor.update(time)
-    rocket.addForce(motor.currentThrust, TVC.currentActuatorPosition * DEG_TO_RAD / 4)
+    rocket.mass = rocket.drymass + motor.totalMotorMass
+    if rocket.posY > 5 and motor.currentThrust < 0.5:
+        motor.ignite('secondary_ascent', time)
+    # rocket.addForce(windForce * dt, 90 * DEG_TO_RAD)
+    rocket.addForce(motor.currentThrust, TVC.currentActuatorPosition * DEG_TO_RAD / 4, rocket.leverArm)
+    if rocket.vel != 0:
+        rocket.addForce(0.65 * 0.01 * 1.225 * (rocket.vel * rocket.vel), np.arcsin(rocket.velY / rocket.vel), rocket.cpLocation)
 
-    # print(rocket.posY)
 
     if time > lastPID + PIDDelay:
         
@@ -100,9 +135,9 @@ while time < simTime:
 
         logger.recordVariable("time", time)
         logger.recordVariable("ori", rocket.ori * RAD_TO_DEG)
-        logger.recordVariable("ori", ori.sensedOri * RAD_TO_DEG)
+        logger.recordVariable("ori_sensed", ori.sensedOri * RAD_TO_DEG)
         logger.recordVariable("ori_rate", rocket.oriRate * RAD_TO_DEG)
-        logger.recordVariable("setpoint", 0)
+        logger.recordVariable("setpoint", PID_ori.setPoint)
         logger.recordVariable("actuator_output", TVC.currentActuatorPosition / 4)
         logger.recordVariable("X_position", rocket.posX)
         logger.recordVariable("Y_position", rocket.posY)
@@ -113,6 +148,7 @@ while time < simTime:
         logger.recordVariable("Y_acceleration", rocket.accelY)
         logger.recordVariable("resultant_acceleration", rocket.accel)
         logger.recordVariable("thrust", motor.currentThrust)
+        logger.recordVariable("mass", rocket.mass)
         logger.saveData(False)
 
     if rocket.velY < -1:
@@ -122,3 +158,28 @@ while time < simTime:
 
     if rocket.posY <= 0.1 and apogee == True:
         break
+
+plot_ori = oriPlot.graph_from_csv(['time', 'actuator_output', 'ori', 'ori_sensed', 'setpoint'])
+plot_pos = posPlot.graph_from_csv(['time', 'Y_position', 'Y_velocity', 'X_position', 'X_velocity', 'thrust'])
+plot_accel = accelPlot.graph_from_csv([])
+
+plt.figure(1)
+
+for index, dataPoint in enumerate(plot_pos):
+    if index > 0:   
+        plt.plot(plot_pos[0], dataPoint)
+
+plt.xlabel("time")
+plt.ylabel("alt (m), velocity (m/s), thrust (n)")
+
+
+plt.figure(2)
+
+for index, dataPoint in enumerate(plot_ori):
+    if index > 0:   
+        plt.plot(plot_ori[0], dataPoint)
+
+plt.xlabel("time")
+plt.ylabel("ori, sensed ori, actuator angle (deg)")
+
+plt.show()

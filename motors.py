@@ -1,5 +1,4 @@
-from typing import TYPE_CHECKING
-
+import random
 
 d12_thrust = [
     [0.049, 2.569],
@@ -333,21 +332,40 @@ class motorType(enumerate):
     h13 = h13st_thrust
 
 class rocketMotor:
-    def __init__(self, Type, timeStep):
-        self.thrustList = []
+    def __init__(self, timeStep):
+        self.motorNames = []
+        self.thrustLists = {}
         self.currentThrust = 0.0
-        self.ignitionTime = 0.0
-        self.ignitionDelay = 0.0
+        self.ignitionTimes = {}
+        self.ignitionDelays = {}
         self.timeStep = timeStep
+        self.maxIgnitionDelay = 0.0
+        self.totalMotorMass = 0.0
+        self.lastTime = 0.0
+        self.isLit = {}
 
-        self.thrustList = interpolateThrust(Type, self.timeStep)
-    
-    def ignite(self, time):
-        self.ignitionTime = (time + self.ignitionDelay) * self.timeStep
+    def add_motor(self, motor, motorName):
+        self.totalMotorMass += 0.025
+        self.motorNames.append(str(motorName))
+        self.thrustLists[str(motorName)] = interpolateThrust(motor, self.timeStep)
+        self.ignitionDelays[str(motorName)] = random.randint(70, 100) / 100 * self.maxIgnitionDelay
+        self.ignitionTimes[str(motorName)] = 0.0
+        self.isLit[str(motorName)] = False
+
+    def ignite(self, motor, time):
+        if self.isLit[str(motor)] == False:
+            self.ignitionTimes[str(motor)] = (time + self.ignitionDelays[str(motor)]) * self.timeStep
+            self.isLit[str(motor)] = True
     
     def update(self, time):
-        counter = int((time * self.timeStep) - self.ignitionTime)
-        if counter > 0 and counter < len(self.thrustList):
-            self.currentThrust = self.thrustList[counter]
-        else:
-            self.currentThrust = 0.0
+        dt = time - self.lastTime
+        for motor in self.motorNames:
+            if self.isLit[motor] == True:
+                counter = int((time * self.timeStep) - self.ignitionTimes[motor])
+                if counter > 0 and counter < len(self.thrustLists[motor]):
+                    self.currentThrust = self.thrustLists[motor][counter]
+                    self.totalMotorMass -= 0.004 * dt
+                else:
+                    self.currentThrust = 0.0
+
+        self.lastTime = time
