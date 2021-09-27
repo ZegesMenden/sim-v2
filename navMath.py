@@ -1,6 +1,9 @@
 import numpy as np
 import random
 
+DEG_TO_RAD = np.pi / 180 
+RAD_TO_DEG = 180 / np.pi
+
 class orientation:
     def __init__(self):
         self.trueOri = 0.0
@@ -11,8 +14,8 @@ class orientation:
     
     def update(self, newOri, dt):
         self.trueOri = newOri
-        self.oriError += (random.randint(60, 100) / 100 * random.choice([-1, 1])) * self.oriNoiseMultiplier * dt
-        self.sensedOri = self.oriError
+        self.oriError += (random.randint(60, 100) / 100 * random.choice([-1, 1])) * self.oriNoiseMultiplier * dt * DEG_TO_RAD
+        self.sensedOri = self.trueOri + self.oriError
 
 class PID:
     def __init__(self, kP, kI, kD, setpoint, iMax, usePONM):

@@ -13,7 +13,7 @@ def calculateRotationalAcceleration(moment_arm, force, force_angle, MMOI):
 def calculateVerticalAcceleration(mass, force, body_angle, actuator_angle):
     """calculates the vertical acceleration of the body based on the angle of the body and the force applied. USE RADIANS."""
     force_on_body = np.cos(actuator_angle) * force
-    return ((np.cos(body_angle) * force_on_body) / mass) - 9.83
+    return ((np.cos(body_angle) * force_on_body) / mass)
 
 def calculateLateralAcceleration(mass, force, body_angle, actuator_angle):
     """calculates the lateral acceleration of the body based on the angle of the body and the force applied. USE RADIANS."""
@@ -28,15 +28,22 @@ class DOF3:
         self.drymass = 0.0
         self.mmoi = 0.0
         self.leverArm = 0.0
+
         self.ori = 0.0
         self.oriRate = 0.0
         self.oriAccel = 0.0
+
+        self.accel = 0.0
         self.accelX = 0.0
         self.accelY = 0.0
+
+        self.vel = 0.0
         self.velX = 0.0
         self.velY = 0.0
+        
         self.posX = 0.0
         self.posY = 0.0
+
         self.timeStep = 0
 
 
@@ -50,14 +57,20 @@ class DOF3:
     def update(self, dt):
         
         self.velX += self.accelX * dt
-        self.velY += self.accelY * dt
+        self.velY += (self.accelY - 9.83) * dt
 
         self.posX += self.velX * dt
         self.posY += self.velY * dt
+        if self.posY < 0:
+            self.posY = 0
+            self.velY = 0
 
         self.oriRate += self.oriAccel * dt
         self.ori += self.oriRate * dt
         
+        self.accel = np.sqrt( np.power(self.accelX, 2) + np.power(self.accelY, 2) )
+        self.vel = np.sqrt( np.power(self.velX, 2) + np.power(self.velY, 2) )
+
         self.accelX = 0.0
         self.accelY = 0.0
         self.oriAccel = 0.0

@@ -302,7 +302,7 @@ def interpolateThrust(thrust_curve, timeStep):
             thrustDiff = point[1] - lPoint[1]
             timeDiff = point[0] - lPoint[0]
             stepsNeeded = timeDiff * timeStep
-
+            
             if stepsNeeded > 0:            
                 adder = thrustDiff / stepsNeeded
 
@@ -313,9 +313,7 @@ def interpolateThrust(thrust_curve, timeStep):
                 while i < stepsNeeded:
                     i += 1
                     thrustToAdd += adder
-                    thrustList.append(point[1])
-            else:
-                print("lol")
+                    thrustList.append(thrustToAdd)
 
         lPoint = point
     # print(thrustList)
