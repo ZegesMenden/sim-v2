@@ -1,13 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import random
+import pygame
+from time import sleep
 
 from navMath import orientation, PID, FSF
 from physicsMath import DOF3, actuator
 from motors import rocketMotor, motorType
 from dataManagement import dataLogger
 from dataVisualisation import dataVisualiser
-from aero import getDrag
+from graphics import rectangle
 
 DEG_TO_RAD = np.pi / 180 
 RAD_TO_DEG = 180 / np.pi
@@ -20,16 +22,16 @@ simTime = 60
 rocket = DOF3()
 motor = rocketMotor(timeStep)
 
-motor.maxIgnitionDelay = 0.75
+motor.maxIgnitionDelay = 0.6
 
 motor.add_motor(motorType.d12, "ascent")
 
-motor.add_motor(motorType.d12, 'secondary_ascent')
+motor.add_motor(motorType.d12, "landing")
 
 ori = orientation()
 
 rocket.mmoi =  0.0404203354
-rocket.drymass = 0.59
+rocket.drymass = 0.6
 rocket.mass = rocket.drymass + motor.totalMotorMass
 rocket.ori = 0
 rocket.leverArm = 0.44
@@ -37,7 +39,7 @@ rocket.cpLocation = -0.3
 
 apogee = False
 
-PIDSpeed = 20 # HZ
+PIDSpeed = 60 # HZ
 dataLoggingSpeed = 40 #HZ
 
 setpoint = 0.0
@@ -45,7 +47,7 @@ setpoint = 0.0
 PIDDelay = 1 / PIDSpeed
 logDelay = 1 / dataLoggingSpeed
 
-PID_ori = PID(2.2, 0.6, 0.3, 0, 5, False)
+PID_ori = PID(1.1, 0.6, 0.5, 0, 5, False)
 
 #-------------------------------------------------------------------
 
@@ -65,6 +67,7 @@ logger.addDataPoint("Y_position")
 logger.addDataPoint("X_velocity")
 logger.addDataPoint("Y_velocity")
 logger.addDataPoint("resultant_velocity")
+logger.addDataPoint("prograde_direction")
 
 logger.addDataPoint("X_acceleration")
 logger.addDataPoint("Y_acceleration")
@@ -77,13 +80,13 @@ logger.fileName = "data_out.csv"
 
 
 oriPlot = dataVisualiser()
-oriPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
+oriPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','velocity_direction','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
 
 posPlot = dataVisualiser()
-posPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
+posPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','velocity_direction','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
 
 accelPlot = dataVisualiser()
-accelPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
+accelPlot.allDataDescriptions = ['time','ori','ori_sensed','ori_rate','setpoint','actuator_output','X_position','Y_position','X_velocity','Y_velocity','resultant_velocity','velocity_direction','X_acceleration','Y_acceleration','resultant_acceleration','thrust','mass']
 
 time = 0.0
 counter = 0
@@ -106,30 +109,86 @@ logger.initCSV(True, True)
 
 motor.ignite("ascent", time)
 
+lastScreen = 0.0
+screenDelay = 1 / 60
+
+d90 = 90 * DEG_TO_RAD
+
+d180 = 180 * DEG_TO_RAD
+
+#colors for pygame
+
+white = (255, 255, 255)
+yellow = (255, 255, 102)
+black = (0, 0, 0)
+red = (255, 0, 0)
+green = (0, 255, 0)
+blue = (50, 153, 213)
+
+dis_width = 1280
+dis_height = 720
+ 
+# dis = pygame.display.set_mode((dis_width, dis_height))
+
+rocketRect = rectangle(dis_width / 2, dis_height / 2, 120, 550)
+
+rocket.oriRate = 0.01
+
+lightAlt = 0.0
+
+retroPeak = False
+retroTime = 0.0
+
+sinePercent = 0.0
+
 #-------------------------------------------------------------------
 
 while time < simTime:
     counter += 1
     time += dt
 
-    # windForce = (np.sin(time * 2) + randWind) * 0.5
-    if time > 0.5 and time < 1.5:
-        setpoint += 5 * dt
+    windForce = (np.sin(time * 2) + randWind) * 0.03
+
+    if time > 0.25 and time < 0.5:
+        setpoint += 10 * dt
         PID_ori.setSetpoint(setpoint)
+    
+    if time > 0.75 and time < 1:
+        setpoint -= 10 * dt
+        PID_ori.setSetpoint(setpoint)
+
+    if apogee == True and lightAlt == 0.0:    
+        lightAlt = rocket.posY * 0.87
+
+    if apogee == True and rocket.posY < lightAlt:
+        motor.ignite("landing", time)
+
+    if apogee == True and motor.currentThrust > 10 and retroPeak == False:
+        print(f'retro peak @ {retroTime}')
+        retroPeak = True
+        retroTime = time
+
+    # if time > retroTime and time < retroTime + 1 and retroTime > 0:
+    #     setpoint = np.sin((time - retroTime) * 6.3) * 5
+    #     PID_ori.setSetpoint(setpoint)
+
     motor.update(time)
     rocket.mass = rocket.drymass + motor.totalMotorMass
-    if rocket.posY > 5 and motor.currentThrust < 0.5:
-        motor.ignite('secondary_ascent', time)
-    # rocket.addForce(windForce * dt, 90 * DEG_TO_RAD)
+    # if rocket.posY > 5 and motor.currentThrust < 6:
+    #     motor.ignite('secondary_ascent', time)
+    # rocket.addForce(windForce, d90 -rocket.ori, rocket.cpLocation)
     rocket.addForce(motor.currentThrust, TVC.currentActuatorPosition * DEG_TO_RAD / 4, rocket.leverArm)
-    if rocket.vel != 0:
-        rocket.addForce(0.65 * 0.01 * 1.225 * (rocket.vel * rocket.vel), np.arcsin(rocket.velY / rocket.vel), rocket.cpLocation)
 
+    if rocket.vel != 0:
+        rocket.addForce(0.65 * 0.004 * 1.225 * (rocket.vel * rocket.vel), rocket.retrograde + rocket.ori, rocket.cpLocation)
+        # print(F'PGRAD: {round(np.arctan( rocket.velY / rocket.velX) * RAD_TO_DEG, 2)}, RGRAD: {round(np.arctan(rocket.velX / rocket.velY) * RAD_TO_DEG, 2)}')
+        # print(f'PGRAD: {round(rocket.prograde * RsAD_TO_DEG, 2)}, RGRAD: {round((rocket.retrograde)  * RAD_TO_DEG, 2)}')
+        # print("\n")
 
     if time > lastPID + PIDDelay:
         
         lastPID = time
-
+        rocketRect.rotate(rocket.oriRate * PIDDelay)
         ori.update(rocket.ori, PIDDelay)
         TVC.actuate(time, PID_ori.compute(ori.sensedOri * RAD_TO_DEG, PIDDelay))
 
@@ -144,12 +203,25 @@ while time < simTime:
         logger.recordVariable("X_velocity", rocket.velX)
         logger.recordVariable("Y_velocity", rocket.velY)
         logger.recordVariable("resultant_velocity", rocket.vel)
+        logger.recordVariable("prograde_direction", rocket.prograde * RAD_TO_DEG)
         logger.recordVariable("X_acceleration", rocket.accelX)
         logger.recordVariable("Y_acceleration", rocket.accelY)
         logger.recordVariable("resultant_acceleration", rocket.accel)
         logger.recordVariable("thrust", motor.currentThrust)
         logger.recordVariable("mass", rocket.mass)
         logger.saveData(False)
+
+    # if time > lastScreen + screenDelay:
+    #     lastScreen = time
+    #     dis.fill(black)
+    #     pygame.draw.rect(dis, white, [(dis_width / 2) - 360, (dis_height / 2) - 350, 700, 700])
+    #     pygame.draw.polygon(dis, black, [rocketRect.vertices[0], rocketRect.vertices[1], rocketRect.vertices[2], rocketRect.vertices[3]])
+        
+    #     pygame.display.update()
+
+    #     for event in pygame.event.get():
+    #         if event.type == pygame.QUIT:
+    #             print("sad")
 
     if rocket.velY < -1:
         apogee = True
@@ -159,8 +231,21 @@ while time < simTime:
     if rocket.posY <= 0.1 and apogee == True:
         break
 
+
 plot_ori = oriPlot.graph_from_csv(['time', 'actuator_output', 'ori', 'ori_sensed', 'setpoint'])
 plot_pos = posPlot.graph_from_csv(['time', 'Y_position', 'Y_velocity', 'X_position', 'X_velocity', 'thrust'])
+
+# for dataLogg in plot_ori:
+#     rocketRect.rotate(rocket.oriRate * dt)
+    
+#     dis.fill(black)
+#     pygame.draw.rect(dis, white, [(dis_width / 2) - 360, (dis_height / 2) - 350, 700, 700])
+#     pygame.draw.polygon(dis, black, [rocketRect.vertices[0], rocketRect.vertices[1], rocketRect.vertices[2], rocketRect.vertices[3]])
+    
+#     pygame.display.update()
+
+#     sleep(dt)
+
 plot_accel = accelPlot.graph_from_csv([])
 
 plt.figure(1)

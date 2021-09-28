@@ -6,6 +6,10 @@ global DEG_TO_RAD
 DEG_TO_RAD = np.pi / 180
 RAD_TO_DEG = 180 / np.pi
 
+d90 = 90 * DEG_TO_RAD
+
+d180 = 180 * DEG_TO_RAD
+
 def calculateRotationalAcceleration(moment_arm, force, force_angle, MMOI):
     """Returns the rotational acceleration on one axis. USE RADIANS.""" 
     return force * (np.sin(force_angle) * moment_arm) / MMOI
@@ -42,6 +46,9 @@ class DOF3:
         self.velX = 0.0
         self.velY = 0.0
         
+        self.prograde = 0.0
+        self.retrograde = 0.0
+
         self.posX = 0.0
         self.posY = 0.0
 
@@ -58,7 +65,9 @@ class DOF3:
     def update(self, dt):
         
         self.velX += self.accelX * dt
-        self.velY += (self.accelY - 9.83) * dt
+        self.velY += self.accelY * dt
+
+        self.velY -= 9.83 * dt
 
         self.posX += self.velX * dt
         self.posY += self.velY * dt
@@ -67,10 +76,21 @@ class DOF3:
             self.velY = 0
 
         self.oriRate += self.oriAccel * dt
-        self.ori += self.oriRate * dt
+
+        nextOri = self.ori + (self.oriRate * dt)
+
+        if nextOri > d180:
+            self.ori = -d180 + (nextOri - d180)
+        elif nextOri < -d180:
+            self.ori = d180 + (nextOri + d180)
+        else:
+            self.ori += self.oriRate * dt
         
         self.accel = np.sqrt( np.power(self.accelX, 2) + np.power(self.accelY, 2) )
         self.vel = np.sqrt( np.power(self.velX, 2) + np.power(self.velY, 2) )
+
+        self.prograde = d90 - np.arcsin(self.velY / self.vel)
+        self.retrograde = self.prograde - d180
 
         self.accelX = 0.0
         self.accelY = 0.0
