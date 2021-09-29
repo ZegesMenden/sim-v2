@@ -343,14 +343,16 @@ class rocketMotor:
         self.totalMotorMass = 0.0
         self.lastTime = 0.0
         self.isLit = {}
+        self.isEjected = {}
 
     def add_motor(self, motor, motorName):
-        self.totalMotorMass += 0.025
+        self.totalMotorMass += 0.04
         self.motorNames.append(str(motorName))
         self.thrustLists[str(motorName)] = interpolateThrust(motor, self.timeStep)
-        self.ignitionDelays[str(motorName)] = random.randint(85, 100) / 100 * self.maxIgnitionDelay
+        self.ignitionDelays[str(motorName)] = random.randint(90, 100) / 100 * self.maxIgnitionDelay
         self.ignitionTimes[str(motorName)] = 0.0
         self.isLit[str(motorName)] = False
+        self.isEjected[str(motorName)] = False
 
     def ignite(self, motor, time):
         if self.isLit[str(motor)] == False:
@@ -367,8 +369,11 @@ class rocketMotor:
                 counter = int((time * self.timeStep) - self.ignitionTimes[motor])
                 if counter > 0 and counter < len(self.thrustLists[motor]):
                     self.currentThrust = self.thrustLists[motor][counter]
-                    self.totalMotorMass -= 0.004 * dt
-                else:
+                    self.totalMotorMass -= 0.008 * dt
+                elif counter > len(self.thrustLists[motor]):
                     self.currentThrust = 0.0
-
+                    if self.isEjected[motor] == False:
+                        self.totalMotorMass -= 0.02
+                        self.isEjected[motor] = True
+            
         self.lastTime = time

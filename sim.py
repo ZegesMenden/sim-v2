@@ -22,11 +22,11 @@ simTime = 60
 rocket = DOF3()
 motor = rocketMotor(timeStep)
 
-motor.maxIgnitionDelay = 0.6
+motor.maxIgnitionDelay = 0.7
 
-motor.add_motor(motorType.d12, "ascent")
+motor.add_motor(motorType.e12, "ascent")
 
-motor.add_motor(motorType.d12, "landing")
+motor.add_motor(motorType.e12, "landing")
 
 ori = orientation()
 
@@ -47,7 +47,7 @@ setpoint = 0.0
 PIDDelay = 1 / PIDSpeed
 logDelay = 1 / dataLoggingSpeed
 
-PID_ori = PID(1.1, 0.6, 0.5, 0, 5, False)
+PID_ori = PID(2.2, 0.7, 0.4, 0, 5, False)
 
 #-------------------------------------------------------------------
 
@@ -140,6 +140,18 @@ retroPeak = False
 retroTime = 0.0
 
 sinePercent = 0.0
+pitchoverStart = 0.0
+timeToImpact = 0.0
+decelerationTime = 0.0
+deltaVTotal = 21.0 # meters / second
+deltaVSpike = 7.5 # over 0.5 secdons
+deltaVafterRetroPeak = 7.75
+sinMultiplier = 0.0
+velAtRetroPeak = 0.0
+apogeeAlt = 0.0
+rocketTrueDV = 0.0
+
+hopAlt = 0.0
 
 #-------------------------------------------------------------------
 
@@ -149,28 +161,48 @@ while time < simTime:
 
     windForce = (np.sin(time * 2) + randWind) * 0.03
 
-    if time > 0.25 and time < 0.5:
-        setpoint += 10 * dt
-        PID_ori.setSetpoint(setpoint)
-    
-    if time > 0.75 and time < 1:
-        setpoint -= 10 * dt
+    if time > 0.25 and pitchoverStart == 0.0:
+        pitchoverStart = time
+
+    if time > 0.25 and time < 1.75:
+        setpoint = np.sin((time - pitchoverStart) * 4.2) * 10
         PID_ori.setSetpoint(setpoint)
 
     if apogee == True and lightAlt == 0.0:    
-        lightAlt = rocket.posY * 0.87
+        timeToImpact = np.sqrt( 2 * rocket.posY / 9.83) + time
+        lightAlt = 0.75 * rocket.posY
+        print(timeToImpact)
 
-    if apogee == True and rocket.posY < lightAlt:
+    if apogee == True and rocket.posY < lightAlt and motor.isLit["landing"] == False:
         motor.ignite("landing", time)
+        print(f'lighting at T+ {round(time, 2)}, {round(rocket.posY, 2)} Meters, and {round(rocket.vel, 2)} meters per second')
 
-    if apogee == True and motor.currentThrust > 10 and retroPeak == False:
-        print(f'retro peak @ {retroTime}')
+    if apogee == True and motor.currentThrust > 30 and retroPeak == False:
         retroPeak = True
         retroTime = time
+        print(f'retro peak of {motor.ignitionDelays["landing"]}, at T+ {retroTime}')
+        print(f'estimated delta v remaining: {motor.ignitionDelays["landing"] * 10}')
+        deltaVafterRetroPeak = motor.ignitionDelays["landing"] * 10
 
-    # if time > retroTime and time < retroTime + 1 and retroTime > 0:
-    #     setpoint = np.sin((time - retroTime) * 6.3) * 5
-    #     PID_ori.setSetpoint(setpoint)
+    if sinMultiplier == 0.0 and apogee == True:
+        PID_ori.setSetpoint(rocket.retrograde)
+
+    if time > retroTime + 0.5 and time < retroTime + 1.2 and retroTime > 0 and sinMultiplier == 0.0:
+        print(f'velocity ta sine wave divert calculation: {rocket.vel}')
+        velAtRetroPeak = rocket.vel
+        print((rocket.vel / deltaVafterRetroPeak))
+        sinMultiplier = (((rocket.vel / deltaVafterRetroPeak) - 1) * 100)# / 0.63490941538)
+        print(f'sin wave divert generated - % bleedoff required: {sinMultiplier}')
+        if sinMultiplier < 1:
+            print("aborting divert - coming in lower than expected")
+            sinMultiplier = 0.001
+
+    if time > retroTime + 0.5 and time < retroTime + 1.5 and retroTime > 0 and sinMultiplier != 0.0:
+        setpoint = np.sin((time - retroTime + 0.5) * 6.3) * sinMultiplier
+        PID_ori.setSetpoint(setpoint)
+
+    if apogee == True and motor.currentThrust < 2 and motor.currentThrust > 0.1:
+        rocketTrueDV = rocket.vel - velAtRetroPeak
 
     motor.update(time)
     rocket.mass = rocket.drymass + motor.totalMotorMass
@@ -210,28 +242,35 @@ while time < simTime:
         logger.recordVariable("thrust", motor.currentThrust)
         logger.recordVariable("mass", rocket.mass)
         logger.saveData(False)
-
-    # if time > lastScreen + screenDelay:
-    #     lastScreen = time
-    #     dis.fill(black)
-    #     pygame.draw.rect(dis, white, [(dis_width / 2) - 360, (dis_height / 2) - 350, 700, 700])
-    #     pygame.draw.polygon(dis, black, [rocketRect.vertices[0], rocketRect.vertices[1], rocketRect.vertices[2], rocketRect.vertices[3]])
-        
-    #     pygame.display.update()
-
-    #     for event in pygame.event.get():
-    #         if event.type == pygame.QUIT:
-    #             print("sad")
-
-    if rocket.velY < -1:
+    
+    if rocket.velY < -1 and apogee == False:
         apogee = True
+        apogeeAlt = rocket.posY
+
+    if rocket.velY > 0 and apogee == True:
+        hopAlt = rocket.posY
 
     rocket.update(dt)
 
     if rocket.posY <= 0.1 and apogee == True:
         break
 
+print(f"""
+Time for some statistics!
+the flight reached an apogee of {round(apogeeAlt, 2)} meters above ground
 
+the percentage of the sine wave divert was {round(sinMultiplier, 2)}
+
+the estimated delta-v after retro peak was {round(deltaVafterRetroPeak, 2)} M/s
+and the actual delta-v was {abs(round(rocketTrueDV, 2))} (including the sine wave divert)
+but the error in velocity lost versus desired velocity lost was {round(rocketTrueDV + velAtRetroPeak, 2)}
+
+the hop altitude was {round(hopAlt, 2)} meters above ground
+
+the ground impact velocity was {round(rocket.vel, 2)} M/s
+the lateral impact velocity was {round(rocket.velX, 2)} M/s
+
+and the orientation at impact was {round(rocket.ori * RAD_TO_DEG, 2)} degrees""")
 plot_ori = oriPlot.graph_from_csv(['time', 'actuator_output', 'ori', 'ori_sensed', 'setpoint'])
 plot_pos = posPlot.graph_from_csv(['time', 'Y_position', 'Y_velocity', 'X_position', 'X_velocity', 'thrust'])
 
