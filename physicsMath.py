@@ -104,6 +104,7 @@ class actuator:
         self.PIDLoop = 0.0
         self.lastActuatorTime = 0.0
         self.maxActuatorPosition = 0.0
+        self.lastActuatorPosition = 0.0
 
     def actuate(self, time, command_angle):
         
@@ -127,3 +128,4 @@ class actuator:
 
         self.currentActuatorPosition += (random.randint(-100, 100) / 100) * self.actuatorNoise
         self.lastActuatorTime = time
+        self.lastActuatorPosition = self.currentActuatorPosition

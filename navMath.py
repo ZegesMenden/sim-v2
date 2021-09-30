@@ -4,6 +4,9 @@ import random
 DEG_TO_RAD = np.pi / 180 
 RAD_TO_DEG = 180 / np.pi
 
+d90 = 90 * DEG_TO_RAD
+d180 = 180 * DEG_TO_RAD
+
 class orientation:
     def __init__(self):
         self.trueOri = 0.0
@@ -16,6 +19,44 @@ class orientation:
         self.trueOri = newOri
         self.oriError += (random.randint(60, 100) / 100 * random.choice([-1, 1])) * self.oriNoiseMultiplier * dt * DEG_TO_RAD
         self.sensedOri = self.trueOri + self.oriError
+
+class position:
+    def __init__(self):
+        self.estimatedPosY = 0.0
+        self.estimatedPosX = 0.0
+        self.estimatedVelY = 0.0
+        self.estimatedVelX = 0.0
+        self.estimatedAccelY = 0.0
+        self.estimatedAccelX = 0.0
+        self.noiseMultiplier = 0.0
+        self.lastAccelRead = 0.0
+        self.estimatedPrograde = 0.0
+        self.estimatedRetrograde = 0.0
+        self.estimatedVel = 0.0
+        self.estimatedAccel = 0.0
+
+    def update(self, accelX, accelY, time):
+
+        dt = time - self.lastAccelRead
+    
+        self.estimatedAccelX = accelX + ((random.randint(-100, 100) / 100) * self.noiseMultiplier)
+        self.estimatedAccelY = accelY + ((random.randint(-100, 100) / 100) * self.noiseMultiplier)
+
+        self.estimatedVelX += self.estimatedAccelX * dt
+        self.estimatedVelY += self.estimatedAccelY * dt
+
+        self.estimatedVelY -= 9.83 * dt
+
+        self.estimatedPosX += self.estimatedVelX * dt
+        self.estimatedPosY += self.estimatedVelY * dt
+
+        self.estimatedAccel = np.sqrt( np.power(self.estimatedAccelX, 2) + np.power(self.estimatedAccelY, 2) )
+        self.estimatedVel = np.sqrt( np.power(self.estimatedVelX, 2) + np.power(self.estimatedVelY, 2) )
+
+        self.estimatedPrograde = d90 - np.arcsin(self.estimatedVelY / self.estimatedVel)
+        self.estimatedRetrograde = self.estimatedPrograde - d180
+
+        self.lastAccelRead = time
 
 class PID:
     def __init__(self, kP, kI, kD, setpoint, iMax, usePONM):
